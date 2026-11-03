@@ -25,3 +25,9 @@ def test_clean(tmp_path):
 def test_build_dry_run(capsys):
     assert main(["build", os.path.join(FIX, "linuxy.c"), "--dry-run"]) == 0
     assert "qcc -Vgcc_ntox86_64" in capsys.readouterr().out
+
+
+def test_guarded_downgraded(tmp_path):
+    (tmp_path / "g.c").write_text("#ifdef __linux__\n#include <sys/epoll.h>\n#else\n#include <sys/epoll.h>\n#endif\n")
+    sev = {f.line: f.severity for f in scan(str(tmp_path)) if f.rule == "QPD001"}
+    assert sev == {2: "info", 4: "error"}

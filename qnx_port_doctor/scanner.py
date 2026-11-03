@@ -44,6 +44,7 @@ def scan_file(path, rel):
     except OSError:
         return []
     out = []
+    guarded = guarded_lines(lines) if ext in SOURCE_EXT else set()
     for no, line in enumerate(lines, 1):
         s = line.strip()
         if ext in SOURCE_EXT and s.startswith(("//", "*", "/*")):
@@ -53,7 +54,10 @@ def scan_file(path, rel):
                 continue
             # socket hint only meaningful when linking is configured: skip noisy rule in source
             if rx.search(line):
-                out.append(Finding(rule.id, rule.severity, rel, no, s[:160], rule.title, rule.fix))
+                sev = rule.severity
+                if no in guarded and rule.kind != "macro":
+                    sev = "info"  # already behind a Linux-only guard
+                out.append(Finding(rule.id, sev, rel, no, s[:160], rule.title, rule.fix))
     return out
 
 
@@ -69,6 +73,27 @@ def scan(root):
     return findings
 
 
-def guarded_lines(path):
-    """Return set of line numbers inside an #ifdef __linux__ block (best effort)."""
-    return set()
+_IF = re.compile(r"^\s*#\s*(if|ifdef|ifndef)\b(.*)")
+_ELSE = re.compile(r"^\s*#\s*(else|elif)\b")
+_ENDIF = re.compile(r"^\s*#\s*endif\b")
+_LINUX = re.compile(r"__linux__|__linux\b|\bHAVE_(EPOLL|INOTIFY|PRCTL|EVENTFD|SYS_PRCTL_H|LINUX)")
+
+
+def guarded_lines(lines):
+    """Line numbers inside a positive Linux-only #if/#ifdef branch (best effort)."""
+    stack, res = [], set()
+    for no, line in enumerate(lines, 1):
+        m = _IF.match(line)
+        if m:
+            linux = bool(_LINUX.search(m.group(2))) and m.group(1) != "ifndef" and "!" not in m.group(2)
+            stack.append(linux)
+            continue
+        if _ELSE.match(line) and stack:
+            stack[-1] = False
+            continue
+        if _ENDIF.match(line) and stack:
+            stack.pop()
+            continue
+        if any(stack):
+            res.add(no)
+    return res
