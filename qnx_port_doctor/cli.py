@@ -22,6 +22,7 @@ def main(argv=None):
     s.add_argument("--min-severity", choices=["error", "warning", "info"], default="info")
     s.add_argument("--fail-on", choices=["error", "warning", "never"], default="error")
     sub.add_parser("rules", help="list rules")
+    sub.add_parser("compat-header", help="print path of qnx_compat.h (use with -include)")
     b = sub.add_parser("build", help="cross-build with QNX SDP")
     b.add_argument("path")
     b.add_argument("--arch", choices=sorted(qbuild.ARCH), default="x86_64")
@@ -56,6 +57,9 @@ def main(argv=None):
     if a.cmd == "rules":
         for r in RULES:
             print(f"{r.id}  {r.severity:7} {r.kind:7} {r.title}")
+        return 0
+    if a.cmd == "compat-header":
+        print(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "qnx_compat.h"))
         return 0
     if a.cmd == "build":
         return qbuild.build(a.path, a.arch, a.out, a.dry_run)

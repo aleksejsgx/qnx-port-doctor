@@ -62,3 +62,20 @@ def test_xopen_and_strptime(tmp_path):
     (tmp_path / "x.c").write_text('#define _XOPEN_SOURCE\nvoid f(){strptime(s, "%FT%T", &t);}\n')
     ids = {f.rule: f.severity for f in scan(str(tmp_path))}
     assert ids["QPD035"] == "error" and ids["QPD037"] == "warning"
+
+
+def test_sa_restart_iov_max(tmp_path):
+    (tmp_path / "s.c").write_text("void f(){ sa.sa_flags |= SA_RESTART; struct iovec v[IOV_MAX]; regexec(0,0,0,0,0); }\n")
+    ids = {f.rule for f in scan(str(tmp_path))}
+    assert {"QPD039", "QPD044", "QPD045"} <= ids
+
+
+def test_compat_header_exists(capsys):
+    assert main(["compat-header"]) == 0
+    assert os.path.exists(capsys.readouterr().out.strip())
+
+
+def test_quirk_guarded_by_itself(tmp_path):
+    (tmp_path / "s.c").write_text("#ifdef SA_RESTART\nsa.sa_flags |= SA_RESTART;\n#endif\n#ifdef HAVE_SIGNAL\nx = SA_RESTART;\n#endif\n")
+    sev = {f.line: f.severity for f in scan(str(tmp_path)) if f.rule == "QPD039"}
+    assert sev == {1: "info", 2: "info", 5: "warning"}

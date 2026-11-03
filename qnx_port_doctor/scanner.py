@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, asdict
 
 from .rules import RULES, SOURCE_EXT, BUILD_FILES
-from .context import guards, build_conditionals, file_reason
+from .context import guards, build_conditionals, file_reason, comment_lines
 
 SKIP_DIRS = {".git", "build", "node_modules", ".svn", "__pycache__"}
 
@@ -47,19 +47,28 @@ def scan_file(path, rel, conditionals=None):
         return []
     out = []
     guarded = guards(lines) if ext in SOURCE_EXT else {}
+    comments = comment_lines(lines) if ext in SOURCE_EXT else set()
     freason = file_reason(rel, conditionals or {}) if ext in SOURCE_EXT else None
     for no, line in enumerate(lines, 1):
         s = line.strip()
-        if ext in SOURCE_EXT and s.startswith(("//", "*", "/*")):
+        if no in comments:
             continue
+        is_directive = bool(re.match(r"\s*#\s*(if|ifdef|ifndef|elif)\b", line))
         for rule, rx in _compiled:
             if rule.kind not in kinds:
                 continue
             # socket hint only meaningful when linking is configured: skip noisy rule in source
             if rx.search(line):
                 sev, note = rule.severity, ""
-                if rule.kind != "macro":
-                    if no in guarded:
+                m = rx.search(line)
+                if not rule.guardable and rule.kind != "macro" and (
+                        (is_directive and "defined" in line or re.match(r"\s*#\s*ifn?def", line))
+                        or guarded.get(no) == m.group(0)):
+                    sev, note = "info", f"already guarded by {m.group(0)}"
+                elif rule.kind != "macro" and rule.guardable:
+                    if is_directive:
+                        sev, note = "info", "feature test in a preprocessor condition"
+                    elif no in guarded:
                         sev, note = "info", f"guarded by {guarded[no]}; verify the QNX build leaves it undefined"
                     elif freason:
                         sev, note = "info", f"conditionally compiled ({freason})"

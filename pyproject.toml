@@ -11,3 +11,6 @@ requires-python = ">=3.8"
 
 [project.scripts]
 qnx-port-doctor = "qnx_port_doctor.cli:main"
+
+[tool.setuptools.package-data]
+qnx_port_doctor = ["data/*.h"]

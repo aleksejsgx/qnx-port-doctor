@@ -10,6 +10,7 @@ class Rule:
     pattern: str  # regex
     title: str
     fix: str
+    guardable: bool = True  # False: affects code that *is* compiled on QNX despite guards
 
 
 RULES = [
@@ -67,13 +68,23 @@ RULES = [
     Rule("QPD034", "info", "api", r"\bO_(DIRECT|NOATIME|TMPFILE|PATH)\b", "Linux-specific open flag",
          "Guard with #ifdef; not supported on QNX."),
     Rule("QPD035", "error", "macro", r"^\s*#\s*define\s+_XOPEN_SOURCE\s*(//.*|/\*.*)?$", "_XOPEN_SOURCE defined without a value",
-         "QNX <sys/platform.h> rejects it (#error ... XOPEN_SOURCE is not supported); use `#define _XOPEN_SOURCE 700`."),
+         "QNX <sys/platform.h> rejects it (#error ... XOPEN_SOURCE is not supported); use `#define _XOPEN_SOURCE 700`.", guardable=False),
     Rule("QPD036", "warning", "macro", r"^\s*#\s*define\s+_XOPEN_SOURCE\s+([1-4]\d\d|[1-9]\d?)\b", "old _XOPEN_SOURCE level",
-         "QNX supports 500/600/700; older values may #error. Use 700."),
+         "QNX supports 500/600/700; older values may #error. Use 700.", guardable=False),
     Rule("QPD037", "warning", "api", r"\bstrptime\s*\(.*%[FTDRe]", "GNU strptime shorthand (%F/%T/%D/%R)",
-         "QNX strptime() returns NULL for %F/%T; spell out %Y-%m-%d and %H:%M:%S."),
+         "QNX strptime() returns NULL for %F/%T; spell out %Y-%m-%d and %H:%M:%S.", guardable=False),
     Rule("QPD038", "info", "api", r"\bstrptime\s*\(", "strptime() with runtime format",
-         "If formats come from users/scripts, expand %F/%T/%D/%R before calling (QNX lacks them)."),
+         "If formats come from users/scripts, expand %F/%T/%D/%R before calling (QNX lacks them).", guardable=False),
+    Rule("QPD039", "warning", "api", r"\bSA_RESTART\b", "SA_RESTART not supported on QNX 8",
+         "QNX <signal.h> does not define SA_RESTART: wrap in #ifdef SA_RESTART and handle EINTR, "
+         "or force-include qnx_compat.h (defines it as 0).", guardable=False),
+    Rule("QPD044", "warning", "api", r"\bIOV_MAX\b", "IOV_MAX is not a compile-time constant on QNX",
+         "QNX <limits.h> #undefs IOV_MAX: use sysconf(_SC_IOV_MAX), UIO_MAXIOV from <sys/uio.h>, "
+         "or force-include qnx_compat.h.", guardable=False),
+    Rule("QPD045", "info", "api", r"\b(regcomp|regexec)\s*\(", "POSIX regex lives in libregex on QNX",
+         "Link with -lregex.", guardable=False),
+    Rule("QPD046", "info", "api", r"\b(getaddrinfo|gethostbyname|socket|inet_ntop)\s*\(", "BSD sockets live in libsocket on QNX",
+         "Link with -lsocket (autoconf: LIBS=-lsocket).", guardable=False),
     # Paths
     Rule("QPD040", "warning", "path", r"\"/proc/(self|\d+|%d)/(maps|status|stat|cmdline|exe|fd|task)",
          "Linux procfs layout", "QNX /proc/<pid>/as uses devctl(DCMD_PROC_*); /proc/self/exe -> _cmdname() / getexecname()."),

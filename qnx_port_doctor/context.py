@@ -15,7 +15,8 @@ _ELIF = re.compile(r"^\s*#\s*elif\b(.*)")
 _ELSE = re.compile(r"^\s*#\s*else\b")
 _ENDIF = re.compile(r"^\s*#\s*endif\b")
 _LINUX = re.compile(r"\b(__linux__|__linux|linux|__gnu_linux__|__GLIBC__|_GNU_SOURCE)\b")
-_FEATURE = re.compile(r"\b((?:HAVE|USE|ENABLE|HAS)_[A-Z0-9_]+)\b")
+_FEATURE = re.compile(r"\b(\w*?(?:HAVE|USE|ENABLE|HAS)_[A-Za-z0-9_]+)\b")
+_DEFINED = re.compile(r"\bdefined\s*\(?\s*([A-Za-z_]\w*)")
 _QNX = re.compile(r"__QNX__|__QNXNTO__")
 
 
@@ -29,6 +30,13 @@ def _classify(expr, directive):
         return m.group(1)
     m = _FEATURE.search(pos)
     if m:
+        return m.group(1)
+    if directive == "ifdef":
+        m = re.match(r"\s*([A-Za-z_]\w*)", pos)
+        if m and not m.group(1).startswith("_WIN"):
+            return m.group(1)
+    m = _DEFINED.search(pos)
+    if m and not m.group(1).startswith("_WIN"):
         return m.group(1)
     return None
 
@@ -64,6 +72,7 @@ _LINUX_NAME = re.compile(r"(^|[-_./])linux([-_.]|$)", re.I)
 def _automake_conditionals(text, relbase):
     out = {}
     cond = []
+    platform_var = None
     for line in text.splitlines():
         s = line.strip()
         m = re.match(r"^if\s+(!?\w+)", s)
@@ -75,6 +84,15 @@ def _automake_conditionals(text, relbase):
             continue
         if s.startswith("endif") and cond:
             cond.pop()
+            continue
+        m = re.match(r"^(\w*(?:PLATFORM|DEPENDENT|LINUX)\w*)\s*\+?=", s, re.I)
+        if m:
+            platform_var = m.group(1)
+        if platform_var:
+            for tok in re.findall(r"[\w./@-]+\.(?:c|cc|cpp|cxx)\b", s):
+                out[os.path.normpath(os.path.join(relbase, tok))] = f"Automake {platform_var}"
+            if not s.endswith("\\"):
+                platform_var = None
             continue
         active = [c for c in cond if not c.startswith("!")]
         if active:
@@ -133,3 +151,24 @@ def file_reason(rel, conditionals):
     if _LINUX_NAME.search(os.path.basename(rel)) or "/linux/" in "/" + rel.replace(os.sep, "/"):
         return "Linux-specific file name (per-platform source)"
     return None
+
+
+def comment_lines(lines):
+    """Line numbers that are entirely inside /* ... */ comments (best effort)."""
+    res, inside = set(), False
+    for no, line in enumerate(lines, 1):
+        s = line.strip()
+        if inside:
+            res.add(no)
+            if "*/" in s:
+                inside = False
+            continue
+        if s.startswith("//"):
+            res.add(no)
+        elif s.startswith("/*"):
+            res.add(no)
+            if "*/" not in s[2:]:
+                inside = True
+        elif "/*" in s and "*/" not in s.split("/*", 1)[1]:
+            inside = True
+    return res
