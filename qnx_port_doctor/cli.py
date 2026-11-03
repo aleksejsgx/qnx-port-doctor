@@ -1,5 +1,6 @@
 """Command-line entry point."""
 import argparse
+import os
 import sys
 
 from . import __version__
@@ -7,6 +8,7 @@ from .scanner import scan
 from .report import RENDERERS
 from .rules import RULES
 from . import build as qbuild
+from . import run as qrun
 
 
 def main(argv=None):
@@ -28,7 +30,28 @@ def main(argv=None):
     t = sub.add_parser("toolchain", help="write a CMake toolchain file")
     t.add_argument("--arch", choices=sorted(qbuild.ARCH), default="x86_64")
     t.add_argument("-o", "--output", default="qnx.cmake")
+    r = sub.add_parser("run", help="boot QNX in QEMU, copy a binary in and run it")
+    r.add_argument("binary")
+    r.add_argument("args", nargs="*")
+    r.add_argument("--image", default=qrun.DEFAULT_IMAGE)
+    r.add_argument("--port", type=int, default=2222)
+    r.add_argument("--user", default="qnxuser")
+    r.add_argument("--password", default=os.environ.get("QPD_PASSWORD", "qnxuser"))
+    r.add_argument("--kvm", action="store_true", help="use KVM acceleration")
+    r.add_argument("--keep", action="store_true", help="leave the VM running for later runs")
+    r.add_argument("--file", action="append", default=[], help="extra file to copy next to the binary")
+    r.add_argument("--stdin", help="local file fed to the program's stdin")
+    r.add_argument("--boot-timeout", type=int, default=300)
     a = p.parse_args(argv)
+
+    if a.cmd == "run":
+        code, out, err = qrun.run(a.binary, a.args, a.image, a.port, a.user, a.password,
+                                  a.boot_timeout, a.keep, a.kvm, a.file, a.stdin,
+                                  log=lambda m: print(m, file=sys.stderr))
+        sys.stdout.write(out)
+        sys.stderr.write(err)
+        print(f"[exit {code}]", file=sys.stderr)
+        return code
 
     if a.cmd == "rules":
         for r in RULES:

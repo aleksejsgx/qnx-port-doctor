@@ -16,3 +16,19 @@ qnx-port-doctor toolchain --arch aarch64le -o qnx.cmake
 ```
 
 License: MIT
+
+## Running on QNX (QEMU)
+
+```sh
+qnx-port-doctor run ./build-qnx/hello                    # boots the quickstart image, copies, runs
+qnx-port-doctor run --keep --stdin input.json ./jq -- -c .  # keep VM up for faster re-runs
+```
+
+Defaults: image `~/qnx800/images/qemu/qemu`, ssh port 2222, user `qnxuser`
+(password from `--password` or `QPD_PASSWORD`).
+
+## False-positive reduction
+
+Findings are downgraded to `info` (with a note) when the code is already conditional:
+`#ifdef __linux__`, `#if HAVE_*`/`USE_*` feature guards, files compiled only under an
+Automake `if HAVE_X` or a CMake Linux branch, and per-platform files such as `osdep-linux.c`.

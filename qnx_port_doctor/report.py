@@ -22,6 +22,8 @@ def render_text(fs, root):
         out.append(f"{f.file}:{f.line}: {f.severity} [{f.rule}] {f.title}")
         out.append(f"    {f.text}")
         out.append(f"    fix: {f.fix}")
+        if f.note:
+            out.append(f"    note: {f.note}")
     return "\n".join(out) + "\n"
 
 
@@ -30,13 +32,17 @@ def render_markdown(fs, root):
     out = [f"# QNX portability report: `{root}`", "",
            f"**{s['error']}** errors, **{s['warning']}** warnings, **{s['info']}** info", "",
            "## By rule", "", "| Rule | Severity | Title | Count |", "|---|---|---|---|"]
+    guarded = sum(1 for f in fs if f.note)
+    if guarded:
+        out[3:3] = ["", f"{guarded} finding(s) downgraded to info because the code is already conditional.", ""]
     by = Counter((f.rule, f.severity, f.title) for f in fs)
     for (r, sev, t), n in sorted(by.items(), key=lambda x: (ORDER[x[0][1]], x[0][0])):
         out.append(f"| {r} | {sev} | {t} | {n} |")
     out += ["", "## Findings", "", "| Location | Rule | Code | Suggested fix |", "|---|---|---|---|"]
     for f in _sorted(fs):
         code = f.text.replace("|", "\\|")
-        out.append(f"| `{f.file}:{f.line}` | {f.rule} | `{code}` | {f.fix} |")
+        fix = f.fix + (f" _({f.note})_" if f.note else "")
+        out.append(f"| `{f.file}:{f.line}` | {f.rule} | `{code}` | {fix} |")
     return "\n".join(out) + "\n"
 
 
