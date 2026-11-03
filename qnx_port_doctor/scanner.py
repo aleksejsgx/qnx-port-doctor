@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, asdict
 
 from .rules import RULES, SOURCE_EXT, BUILD_FILES
-from .context import guards, build_conditionals, file_reason, comment_lines
+from .context import guards, build_conditionals, file_reason, comment_lines, build_file_guards
 
 SKIP_DIRS = {".git", "build", "node_modules", ".svn", "__pycache__"}
 
@@ -55,7 +55,7 @@ def scan_file(path, rel, conditionals=None, compiled=None):
     except OSError:
         return []
     out = []
-    guarded = guards(lines) if ext in SOURCE_EXT else {}
+    guarded = guards(lines) if ext in SOURCE_EXT else build_file_guards(lines, name)
     defined = set(re.findall(r"^\s*#\s*define\s+([A-Za-z_]\w*)", "".join(lines), re.M)) if ext in SOURCE_EXT else set()
     comments = comment_lines(lines) if ext in SOURCE_EXT else set()
     freason = file_reason(rel, conditionals or {}) if ext in SOURCE_EXT else None
@@ -65,6 +65,10 @@ def scan_file(path, rel, conditionals=None, compiled=None):
             continue
         if "link" in kinds and s.startswith("#"):
             continue
+        if ext in SOURCE_EXT:
+            line = re.sub(r"/\*.*?\*/", " ", line)
+            if not line.lstrip().startswith("#") or "include" in line:
+                line = re.sub(r"(?<!:)//.*", "", line)
         is_directive = bool(re.match(r"\s*#\s*(if|ifdef|ifndef|elif)\b", line))
         for rule, rx in compiled or _compiled:
             if rule.kind not in kinds:
@@ -73,7 +77,10 @@ def scan_file(path, rel, conditionals=None, compiled=None):
             if rx.search(line):
                 sev, note = rule.severity, ""
                 m = rx.search(line)
-                if not rule.guardable and rule.kind != "macro" and m.group(0) in defined:
+                platform_only = bool(freason) and ("specific" in freason or "LINUX" in freason.upper())
+                if freason and rule.kind != "macro" and (rule.guardable or platform_only):
+                    sev, note = "info", f"conditionally compiled ({freason})"
+                elif not rule.guardable and rule.kind != "macro" and m.group(0) in defined:
                     sev, note = "info", f"fallback definition of {m.group(0)} in this file"
                 elif not rule.guardable and rule.kind != "macro" and (
                         (is_directive and "defined" in line or re.match(r"\s*#\s*ifn?def", line))
@@ -81,6 +88,8 @@ def scan_file(path, rel, conditionals=None, compiled=None):
                     sev, note = "info", f"already guarded by {m.group(0)}"
                 elif rule.kind == "link" and re.match(r"\s*@\w+_TRUE@", line):
                     sev, note = "info", "Automake conditional line"
+                elif rule.kind == "link" and no in guarded:
+                    sev, note = "info", f"conditional in build file ({guarded[no]})"
                 elif rule.kind != "macro" and rule.guardable:
                     if is_directive:
                         sev, note = "info", "feature test in a preprocessor condition"

@@ -63,3 +63,38 @@ def test_autotools_plan(tmp_path):
     assert env["PKG_CONFIG_LIBDIR"] == "/sr/lib/pkgconfig"
     env, cmds = autotools_plan(str(tmp_path / "nope"), compat=False)
     assert cmds[0] == ["autoreconf", "-fi"] and "-include" not in env["CPPFLAGS"]
+
+
+def test_build_file_conditionals(tmp_path):
+    from qnx_port_doctor.scanner import scan
+    (tmp_path / "Makefile.am").write_text("bin_LDADD = -lrt\nif ENABLE_X\nfoo_LIBADD = -ldl\nendif\n")
+    (tmp_path / "CMakeLists.txt").write_text(
+        'if(CMAKE_SYSTEM_NAME STREQUAL "Linux")\n  target_link_libraries(x -ldl)\nendif()\n'
+        'target_link_libraries(y -lrt)\n')
+    sev = {(f.file, f.line): f.severity for f in scan(str(tmp_path)) if f.rule == "QPD060"}
+    assert sev[("Makefile.am", 1)] == "warning" and sev[("Makefile.am", 3)] == "info"
+    assert sev[("CMakeLists.txt", 2)] == "info" and sev[("CMakeLists.txt", 4)] == "warning"
+
+
+def test_qnx7_to_8_rules(tmp_path):
+    from qnx_port_doctor.scanner import scan
+    (tmp_path / "qnx.c").write_text("x = _SYSPAGE_ENTRY(_syspage_ptr, new_cpuinfo);\nu = qtime->nsec;\n")
+    ids = {f.rule: f.severity for f in scan(str(tmp_path))}
+    assert ids == {"QPD090": "error", "QPD091": "error"}
+    assert "_SYSPAGE_ENTRY(_syspage_ptr, cpuinfo)" in fixes.unified_diff(fixes.plan(str(tmp_path)))
+
+
+def test_other_platform_files(tmp_path):
+    from qnx_port_doctor.scanner import scan
+    (tmp_path / "os390-syscalls.h").write_text("int epoll_wait(int);\n")
+    (tmp_path / "w.c").write_text("#if defined(_WIN32)\n#include <malloc.h>\n#endif\n#include <stdio.h> /* epoll_wait( */\n")
+    assert all(f.severity == "info" for f in scan(str(tmp_path)))
+
+
+def test_feature_conditional_file_keeps_quirks(tmp_path):
+    from qnx_port_doctor.scanner import scan
+    (tmp_path / "Makefile.am").write_text("if SIGNAL_SUPPORT\nSRC += signal.c\nendif\n")
+    (tmp_path / "signal.c").write_text("void f(){ sa.sa_flags |= SA_RESTART; }\n#include <sys/epoll.h>\n")
+    sev = {f.rule: f.severity for f in scan(str(tmp_path))}
+    assert sev["QPD039"] == "warning"   # compiled on QNX too: still a blocker
+    assert sev["QPD001"] == "info"      # Linux API in a feature-conditional file

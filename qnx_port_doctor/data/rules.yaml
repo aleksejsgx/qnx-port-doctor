@@ -268,3 +268,26 @@ rules:
   pattern: '-Wl,--as-needed|-static-libgcc|-rdynamic'
   title: GNU ld-specific flag
   fix: Usually fine with qcc (GNU ld), but verify -rdynamic/--as-needed behaviour.
+# --- QNX 7 -> QNX 8 migration (code that already targets older QNX) ---
+- id: QPD090
+  severity: error
+  kind: api
+  pattern: '_SYSPAGE_ENTRY\s*\([^,]+,\s*new_cpuinfo\s*\)'
+  title: syspage new_cpuinfo was renamed in QNX 8
+  fix: 'QNX 8 syspage has only `cpuinfo`: use _SYSPAGE_ENTRY(_syspage_ptr, cpuinfo).'
+  guardable: false
+  autofix: syspage_cpuinfo
+- id: QPD091
+  severity: error
+  kind: api
+  pattern: 'qtime\w*\s*->\s*nsec\b'
+  title: qtime_entry.nsec removed in QNX 8
+  fix: 'Use clock_gettime(CLOCK_MONOTONIC, &ts) for uptime, or ClockTime() for the system clock.'
+  guardable: false
+- id: QPD092
+  severity: warning
+  kind: api
+  pattern: '\b(SYSPAGE_ENTRY|_SYSPAGE_ENTRY)\s*\([^)]*\b(new_intrinfo|old_cpuinfo|old_cacheattr|old_intrinfo|old_mdriver)\b'
+  title: legacy syspage section
+  fix: Check the QNX 8 <sys/syspage.h>; legacy/new_* section aliases were consolidated.
+  guardable: false

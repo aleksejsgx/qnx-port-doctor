@@ -33,10 +33,10 @@ def _classify(expr, directive):
         return m.group(1)
     if directive == "ifdef":
         m = re.match(r"\s*([A-Za-z_]\w*)", pos)
-        if m and not m.group(1).startswith("_WIN"):
+        if m:
             return m.group(1)
     m = _DEFINED.search(pos)
-    if m and not m.group(1).startswith("_WIN"):
+    if m:
         return m.group(1)
     return None
 
@@ -67,6 +67,10 @@ def guards(lines):
 
 
 _LINUX_NAME = re.compile(r"(^|[-_./])linux([-_.]|$)", re.I)
+# Per-platform sources for other systems (never compiled for QNX).
+_OTHER_OS = r"linux|android|darwin|macos|osx|apple|ios|freebsd|netbsd|openbsd|dragonfly|bsd|sunos|solaris|illumos|aix|os390|zos|ibmi|os400|haiku|cygwin|msys|mingw|win32|win|windows|hpux|hurd"
+_OS_NAME = re.compile(r"(^|[-_./])(" + _OTHER_OS + r")([-_.]|$)", re.I)
+_CMAKE_OS = re.compile(r"(" + _OTHER_OS + r"|WIN32|APPLE|UNIX AND NOT)", re.I)
 
 
 def _automake_conditionals(text, relbase):
@@ -107,7 +111,9 @@ def _cmake_conditionals(text, relbase):
         s = line.strip()
         m = re.match(r"^(if|elseif)\s*\((.*)\)", s, re.I)
         if m:
-            linux = bool(re.search(r"linux", m.group(2), re.I)) and "NOT" not in m.group(2)
+            c = m.group(2)
+            linux = (bool(_CMAKE_OS.search(c)) and "NOT" not in c and not re.search(r"QNX", c, re.I)
+                     and "UNIX AND NOT" not in c.upper())
             if m.group(1).lower() == "if":
                 cond.append(linux)
             elif cond:
@@ -122,7 +128,7 @@ def _cmake_conditionals(text, relbase):
         if any(cond):
             for tok in re.findall(r"[\w./${}-]+\.(?:c|cc|cpp|cxx)\b", s):
                 tok = tok.replace("${CMAKE_CURRENT_SOURCE_DIR}/", "")
-                out[os.path.normpath(os.path.join(relbase, tok))] = "CMake Linux-only branch"
+                out[os.path.normpath(os.path.join(relbase, tok))] = "CMake platform-specific branch"
     return out
 
 
@@ -148,8 +154,14 @@ def file_reason(rel, conditionals):
     rel = os.path.normpath(rel)
     if rel in conditionals:
         return conditionals[rel]
-    if _LINUX_NAME.search(os.path.basename(rel)) or "/linux/" in "/" + rel.replace(os.sep, "/"):
-        return "Linux-specific file name (per-platform source)"
+    base = os.path.splitext(os.path.basename(rel))[0]
+    m = _OS_NAME.search(base)
+    if m:
+        return f"{m.group(2)}-specific file name (per-platform source)"
+    parts = rel.replace(os.sep, "/").split("/")[:-1]
+    for d in parts:
+        if re.fullmatch(_OTHER_OS, d, re.I):
+            return f"{d}-specific directory"
     return None
 
 
@@ -171,4 +183,51 @@ def comment_lines(lines):
                 inside = True
         elif "/*" in s and "*/" not in s.split("/*", 1)[1]:
             inside = True
+    return res
+
+
+def build_file_guards(lines, name):
+    """Map line number -> reason for build-file lines inside a conditional block.
+
+    Automake: `if COND ... else ... endif` (the else branch counts as conditional too,
+    because it is only used when COND is false on the build host).
+    CMake: `if(<platform test>) ... endif()` for non-QNX platforms.
+    """
+    res, stack = {}, []
+    is_am = name == "Makefile.am" or name.endswith(".am")
+    is_cmake = name == "CMakeLists.txt" or name.endswith(".cmake")
+    for no, line in enumerate(lines, 1):
+        s = line.strip()
+        if is_am:
+            m = re.match(r"^if\s+(!?\w+)", s)
+            if m:
+                stack.append(f"Automake `if {m.group(1)}`")
+                continue
+            if re.match(r"^else\b", s) and stack:
+                stack[-1] = stack[-1].replace("`if ", "`else of ")
+                continue
+            if re.match(r"^endif\b", s) and stack:
+                stack.pop()
+                continue
+        elif is_cmake:
+            m = re.match(r"^(if|elseif)\s*\((.*)\)", s, re.I)
+            if m:
+                c = m.group(2)
+                plat = (bool(_CMAKE_OS.search(c)) and "NOT" not in c and not re.search("QNX", c, re.I))
+                label = f"CMake `if({c.strip()})`" if plat else None
+                if m.group(1).lower() == "if":
+                    stack.append(label)
+                elif stack:
+                    stack[-1] = label
+                continue
+            if re.match(r"^else\s*\(", s, re.I) and stack:
+                stack[-1] = None
+                continue
+            if re.match(r"^endif\s*\(", s, re.I) and stack:
+                stack.pop()
+                continue
+        for g in reversed(stack):
+            if g:
+                res[no] = g
+                break
     return res

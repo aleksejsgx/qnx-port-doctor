@@ -69,7 +69,12 @@ def fix_iov_max_fallback(lines, idx, state):
                               "#ifndef IOV_MAX", "#include <sys/uio.h>", "#define IOV_MAX UIO_MAXIOV", "#endif"])
 
 
+def fix_syspage_cpuinfo(lines, idx, state):
+    lines[idx] = re.sub(r"(_SYSPAGE_ENTRY\s*\([^,]+,\s*)new_cpuinfo(\s*\))", r"\1cpuinfo\2", lines[idx])
+
+
 FIXERS = {
+    "syspage_cpuinfo": fix_syspage_cpuinfo,
     "xopen_value": fix_xopen_value,
     "strptime_expand": fix_strptime_expand,
     "guard_sa_restart": fix_guard_sa_restart,

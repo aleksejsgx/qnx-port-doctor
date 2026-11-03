@@ -92,7 +92,11 @@ def build(src, arch="x86_64", out="build-qnx", dry_run=False, autotools=False, p
         cmds = [["qcc", f"-V{variant}", src, "-o", os.path.join(out, os.path.splitext(os.path.basename(src))[0])]]
     elif os.path.exists(os.path.join(src, "CMakeLists.txt")):
         tc = os.path.abspath(os.path.join(out, f"qnx-{arch}.cmake"))
-        cmds = [["cmake", "-S", src, "-B", out, f"-DCMAKE_TOOLCHAIN_FILE={tc}"], ["cmake", "--build", out, "-j"]]
+        # CMAKE_POLICY_VERSION_MINIMUM lets CMake >= 4 configure projects that still declare
+        # cmake_minimum_required(VERSION < 3.5).
+        cmds = [["cmake", "-S", src, "-B", out, f"-DCMAKE_TOOLCHAIN_FILE={tc}",
+                 "-DCMAKE_POLICY_VERSION_MINIMUM=3.5", *configure_args],
+                ["cmake", "--build", out, f"-j{jobs}"]]
     else:
         cmds = [["make", "-C", src, f"CC=qcc -V{variant}", f"CXX=q++ -V{variant}_cxx"]]
     for k, v in env.items():

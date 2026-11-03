@@ -39,7 +39,8 @@ def main(argv=None):
     b.add_argument("--dry-run", action="store_true")
     b.add_argument("--autotools", action="store_true", help="configure --host=<qnx triple> && make")
     b.add_argument("--prefix", help="install prefix / sysroot with dependencies (adds -I/-L/pkg-config)")
-    b.add_argument("--configure-arg", action="append", default=[], dest="configure_args")
+    b.add_argument("--configure-arg", action="append", default=[], dest="configure_args",
+                   help="extra ./configure or cmake argument (repeatable)")
     b.add_argument("--lib", action="append", default=[], dest="libs", help="extra -l flag, e.g. -lncurses")
     b.add_argument("--no-compat", action="store_true", help="do not force-include qnx_compat.h")
     b.add_argument("--env", action="append", default=[], metavar="K=V", help="extra environment for configure/make")

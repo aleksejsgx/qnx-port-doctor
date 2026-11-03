@@ -1,0 +1,23 @@
+--- a/src/unix/qnx.c	2026-11-03 22:28:25.415170708 +0100
++++ b/src/unix/qnx.c	2026-11-03 22:28:25.431170876 +0100
+@@ -113,15 +113,17 @@
+ 
+ 
+ int uv_uptime(double* uptime) {
+-  struct qtime_entry* qtime = _SYSPAGE_ENTRY(_syspage_ptr, qtime);
+-  *uptime = (qtime->nsec / 1000000000.0);
++  struct timespec ts;
++  if (clock_gettime(CLOCK_MONOTONIC, &ts))
++    return UV__ERR(errno);
++  *uptime = ts.tv_sec + ts.tv_nsec / 1000000000.0;
+   return 0;
+ }
+ 
+ 
+ int uv_cpu_info(uv_cpu_info_t** cpu_infos, int* count) {
+   struct cpuinfo_entry* cpuinfo =
+-    (struct cpuinfo_entry*)_SYSPAGE_ENTRY(_syspage_ptr, new_cpuinfo);
++    (struct cpuinfo_entry*)_SYSPAGE_ENTRY(_syspage_ptr, cpuinfo);
+   size_t cpuinfo_size = _SYSPAGE_ELEMENT_SIZE(_syspage_ptr, cpuinfo);
+   struct strings_entry* strings = _SYSPAGE_ENTRY(_syspage_ptr, strings);
+   int num_cpus = _syspage_ptr->num_cpu;
