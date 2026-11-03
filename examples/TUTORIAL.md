@@ -285,7 +285,42 @@ QNX 8.0.0
 
 A tmux server, its client and a pseudo-terminal pair, all running on QNX 8. 🎉
 
-## 8. Put it in CI
+## 8. Bonus: the same port on 64-bit Arm (aarch64le)
+
+Everything above also targets Arm. Rebuild with `--arch aarch64le`:
+
+```sh
+mkdir a64 && tar -C a64 -xzf jq-1.8.1.tar.gz
+qnx-port-doctor fix a64/jq-1.8.1 --apply
+qnx-port-doctor build a64/jq-1.8.1 --autotools --arch aarch64le \
+  --configure-arg=--without-oniguruma --configure-arg=--disable-docs --configure-arg=--disable-shared
+qnx-port-doctor build cJSON-1.7.18 --arch aarch64le --out cjson-a64   # CMake toolchain for aarch64
+```
+
+The host triple becomes `aarch64-unknown-nto-qnx8.0.0` and the CMake toolchain uses
+`gcc_ntoaarch64le`. To run the results, build an aarch64le QEMU image once. You need three
+packages from the QNX Software Center: the QEMU virt BSP (`com.qnx.qnx800.target.qemuvirt`),
+the virtio block driver (`com.qnx.qnx800.target.driver.virtio.devb`) and
+`qemu-system-aarch64`.
+
+```sh
+mkdir -p ~/qnx800/images/qemu-aarch64 && cd ~/qnx800/images/qemu-aarch64
+mkqnximage --type=qemu --arch=aarch64le --ssh-ident=none --data-size=200 --build
+```
+
+`run` reads the architecture from the ELF header, so the command doesn't change:
+
+```sh
+qnx-port-doctor run --stdin in.json a64/jq-1.8.1/jq -- -c '.os'
+```
+
+The Arm VM is fully emulated (no KVM on an x86 host), so expect a slower boot than x86_64.
+
+> **Troubleshooting:** if the boot log shows `devb-virtio: cannot execute` followed by
+> `Unable to access /dev/hd0`, the virtio block driver package is missing. mkqnximage
+> only warns about it (`Host file 'sbin/devb-virtio' missing`).
+
+## 9. Put it in CI
 
 ```sh
 qnx-port-doctor scan . -f sarif -o qnx.sarif --fail-on never
@@ -295,7 +330,7 @@ Upload `qnx.sarif` with GitHub's `upload-sarif` action, and the findings appear 
 scanning alerts on the lines they refer to. Or gate merges with
 `qnx-port-doctor scan . --fail-on warning`.
 
-## 9. What you learned
+## 10. What you learned
 
 | QNX difference | Rule | Typical fix |
 |---|---|---|

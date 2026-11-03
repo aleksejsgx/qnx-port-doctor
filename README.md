@@ -54,8 +54,18 @@ spelled-out formats).
 
 ## Running on QNX (QEMU)
 
-Defaults: image `~/qnx800/images/qemu/qemu`, ssh port 2222, user `qnxuser`
+The target architecture is read from the binary's ELF header (or `--arch`).
+Defaults: x86_64 image `~/qnx800/images/qemu/qemu` on ssh port 2222, aarch64le image
+`~/qnx800/images/qemu-aarch64` on port 2223 (QEMU `virt`, Cortex-A57); user `qnxuser`
 (password from `--password` or `QPD_PASSWORD`). `--keep` leaves the VM up for fast re-runs;
 `--file` copies extra files; `--stdin` feeds a local file to the program.
+
+Build the aarch64le image once (needs the `com.qnx.qnx800.target.qemuvirt` BSP and the
+`com.qnx.qnx800.target.driver.virtio.devb` block driver package, plus `qemu-system-aarch64`):
+
+```sh
+mkdir -p ~/qnx800/images/qemu-aarch64 && cd ~/qnx800/images/qemu-aarch64
+mkqnximage --type=qemu --arch=aarch64le --ssh-ident=none --data-size=200 --build
+```
 
 License: MIT

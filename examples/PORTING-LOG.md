@@ -42,3 +42,14 @@ qnx-port-doctor run --file cjson-tests.tgz examples/cjson-tests.sh
 qnx-port-doctor build libuv-v1.49.2 --out libuv-qnx --configure-arg=-DLIBUV_BUILD_TESTS=ON
 qnx-port-doctor run --file libuv-qnx/uv_run_tests_a examples/libuv-tests.sh
 ```
+
+## aarch64le
+
+* Cross-builds verified (ELF machine 183): jq 1.8.1 (autotools, after `fix`), cJSON 1.7.18 and libuv 1.49.2 (CMake).
+* Running them in QEMU is pending: the image built by `mkqnximage --arch=aarch64le` needs `sbin/devb-virtio`
+  from package `com.qnx.qnx800.target.driver.virtio.devb`, which isn't installed yet. Without it the
+  disk never appears (`Unable to access /dev/hd0`).
+* Workarounds tried, kept here for reference:
+  * Embedding the disk image in the IFS and serving it through `devb-loopback` or `devb-ram`:
+    the partitions are detected and read-only mounts work, but read-write qnx6 mounts fail with
+    "Read-only file system".

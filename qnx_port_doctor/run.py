@@ -8,12 +8,42 @@ import tempfile
 import time
 
 DEFAULT_IMAGE = os.path.expanduser("~/qnx800/images/qemu/qemu")
+# aarch64le image built with:
+#   mkqnximage --type=qemu --arch=aarch64le --ssh-ident=none --data-size=200 --build
+DEFAULT_IMAGES = {
+    "x86_64": DEFAULT_IMAGE,
+    "aarch64le": os.path.expanduser("~/qnx800/images/qemu-aarch64"),
+}
 SSH_OPTS = ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
             "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=10"]
 
 
-def qemu_cmd(image, port, kvm=False, smp=2, mem="2G", serial_log="/tmp/qnx-serial.log"):
+def detect_arch(path):
+    """Return 'x86_64' or 'aarch64le' from an ELF header, None if unknown/not ELF."""
+    try:
+        with open(path, "rb") as f:
+            h = f.read(20)
+    except OSError:
+        return None
+    if h[:4] != b"\x7fELF":
+        return None
+    return {62: "x86_64", 183: "aarch64le"}.get(int.from_bytes(h[18:20], "little"))
+
+
+def qemu_cmd(image, port, kvm=False, smp=2, mem="2G", serial_log="/tmp/qnx-serial.log", arch="x86_64"):
     out = os.path.join(image, "output")
+    if arch == "aarch64le":
+        # Mirrors mkqnximage's qemu/runimage for OPT_AARCH64_VERSION=8 (virt-4.2, cortex-a57).
+        return ["qemu-system-aarch64", "-machine", "virt-4.2", "-cpu", "cortex-a57", "-smp", str(smp),
+                "-m", mem, "-snapshot",
+                "-drive", f"file={out}/disk-qemu.vmdk,if=none,id=drv0",
+                "-device", "virtio-blk-device,drive=drv0",
+                "-netdev", f"user,id=net0,hostfwd=tcp:127.0.0.1:{port}-:22",
+                "-device", "virtio-net-device,netdev=net0",
+                "-kernel", f"{out}/ifs.bin", "-display", "none", "-monitor", "none",
+                "-serial", f"file:{serial_log}",
+                "-object", "rng-random,filename=/dev/urandom,id=rng0",
+                "-device", "virtio-rng-device,rng=rng0"]
     cpu = ["-enable-kvm", "-cpu", "host"] if kvm else ["-cpu", "max"]
     return ["qemu-system-x86_64", *cpu, "-smp", str(smp), "-m", mem, "-snapshot",
             "-drive", f"file={out}/disk-qemu.vmdk,if=ide,id=drv0",
@@ -72,19 +102,24 @@ def wait_ready(sess, deadline):
     return False
 
 
-def run(binary, args=(), image=DEFAULT_IMAGE, port=2222, user="qnxuser", password="qnxuser",
-        boot_timeout=300, keep=False, kvm=False, extra_files=(), stdin_file=None, log=print):
+def run(binary, args=(), image=None, port=None, user="qnxuser", password="qnxuser",
+        boot_timeout=300, keep=False, kvm=False, extra_files=(), stdin_file=None, log=print, arch=None):
     """Returns (exit_code, stdout, stderr). Reuses a VM already listening on `port`."""
+    if arch is None:
+        arch = detect_arch(binary) or next(
+            (a for a in map(detect_arch, extra_files) if a), "x86_64")
+    image = image or DEFAULT_IMAGES[arch]
+    port = port or (2222 if arch == "x86_64" else 2223)
     sess = Session(port, user, password)
     proc = None
     try:
         if not port_open(port):
             if not os.path.exists(os.path.join(image, "output", "ifs.bin")):
                 raise SystemExit(f"QNX QEMU image not found in {image}")
-            cmd = qemu_cmd(image, port, kvm=kvm)
+            cmd = qemu_cmd(image, port, kvm=kvm, arch=arch, serial_log=f"/tmp/qnx-serial-{arch}.log")
             log("+ " + " ".join(cmd))
             proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        log(f"waiting for ssh on :{port} ...")
+        log(f"[{arch}] waiting for ssh on :{port} ...")
         t0 = time.time()
         if not wait_ready(sess, t0 + boot_timeout):
             raise SystemExit("VM did not become reachable over ssh")

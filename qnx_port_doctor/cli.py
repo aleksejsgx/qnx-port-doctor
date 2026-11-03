@@ -51,8 +51,9 @@ def main(argv=None):
     r = sub.add_parser("run", help="boot QNX in QEMU, copy a binary in and run it")
     r.add_argument("binary")
     r.add_argument("args", nargs="*")
-    r.add_argument("--image", default=qrun.DEFAULT_IMAGE)
-    r.add_argument("--port", type=int, default=2222)
+    r.add_argument("--arch", choices=sorted(qbuild.ARCH), help="target (default: from the ELF header)")
+    r.add_argument("--image", help="mkqnximage directory (default per arch)")
+    r.add_argument("--port", type=int, help="host ssh port (default 2222 x86_64, 2223 aarch64le)")
     r.add_argument("--user", default="qnxuser")
     r.add_argument("--password", default=os.environ.get("QPD_PASSWORD", "qnxuser"))
     r.add_argument("--kvm", action="store_true", help="use KVM acceleration")
@@ -65,7 +66,7 @@ def main(argv=None):
     if a.cmd == "run":
         code, out, err = qrun.run(a.binary, a.args, a.image, a.port, a.user, a.password,
                                   a.boot_timeout, a.keep, a.kvm, a.file, a.stdin,
-                                  log=lambda m: print(m, file=sys.stderr))
+                                  log=lambda m: print(m, file=sys.stderr), arch=a.arch)
         sys.stdout.write(out)
         sys.stderr.write(err)
         print(f"[exit {code}]", file=sys.stderr)

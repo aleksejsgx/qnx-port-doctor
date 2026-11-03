@@ -98,3 +98,17 @@ def test_feature_conditional_file_keeps_quirks(tmp_path):
     sev = {f.rule: f.severity for f in scan(str(tmp_path))}
     assert sev["QPD039"] == "warning"   # compiled on QNX too: still a blocker
     assert sev["QPD001"] == "info"      # Linux API in a feature-conditional file
+
+
+def test_run_arch_detection_and_qemu_cmd(tmp_path):
+    from qnx_port_doctor import run as qrun
+    a64 = tmp_path / "a64"
+    a64.write_bytes(b"\x7fELF\x02\x01\x01" + b"\0" * 11 + (183).to_bytes(2, "little"))
+    x86 = tmp_path / "x86"
+    x86.write_bytes(b"\x7fELF\x02\x01\x01" + b"\0" * 11 + (62).to_bytes(2, "little"))
+    assert qrun.detect_arch(str(a64)) == "aarch64le"
+    assert qrun.detect_arch(str(x86)) == "x86_64"
+    assert qrun.detect_arch(str(tmp_path)) is None
+    cmd = qrun.qemu_cmd("/img", 2223, arch="aarch64le")
+    assert cmd[0] == "qemu-system-aarch64" and "virtio-blk-device,drive=drv0" in cmd
+    assert "hostfwd=tcp:127.0.0.1:2223-:22" in " ".join(cmd)
