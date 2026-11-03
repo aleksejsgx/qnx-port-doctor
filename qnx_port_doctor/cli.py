@@ -6,7 +6,8 @@ import sys
 from . import __version__
 from .scanner import scan
 from .report import RENDERERS
-from .rules import RULES
+from .rules import RULES, load_rules
+from . import fixes
 from . import build as qbuild
 from . import run as qrun
 
@@ -21,13 +22,28 @@ def main(argv=None):
     s.add_argument("-o", "--output")
     s.add_argument("--min-severity", choices=["error", "warning", "info"], default="info")
     s.add_argument("--fail-on", choices=["error", "warning", "never"], default="error")
-    sub.add_parser("rules", help="list rules")
+    s.add_argument("--rules", action="append", default=[], help="extra rules YAML (overrides by id)")
+    rl = sub.add_parser("rules", help="list rules")
+    rl.add_argument("--rules", action="append", default=[])
+    fx = sub.add_parser("fix", help="write a unified-diff patch for auto-fixable findings")
+    fx.add_argument("path")
+    fx.add_argument("-o", "--output", help="patch file (default: stdout)")
+    fx.add_argument("--apply", action="store_true", help="also modify the files in place")
+    fx.add_argument("--include-guarded", action="store_true", help="also fix findings downgraded to info")
+    fx.add_argument("--rules", action="append", default=[])
     sub.add_parser("compat-header", help="print path of qnx_compat.h (use with -include)")
     b = sub.add_parser("build", help="cross-build with QNX SDP")
     b.add_argument("path")
     b.add_argument("--arch", choices=sorted(qbuild.ARCH), default="x86_64")
     b.add_argument("--out", default="build-qnx")
     b.add_argument("--dry-run", action="store_true")
+    b.add_argument("--autotools", action="store_true", help="configure --host=<qnx triple> && make")
+    b.add_argument("--prefix", help="install prefix / sysroot with dependencies (adds -I/-L/pkg-config)")
+    b.add_argument("--configure-arg", action="append", default=[], dest="configure_args")
+    b.add_argument("--lib", action="append", default=[], dest="libs", help="extra -l flag, e.g. -lncurses")
+    b.add_argument("--no-compat", action="store_true", help="do not force-include qnx_compat.h")
+    b.add_argument("--env", action="append", default=[], metavar="K=V", help="extra environment for configure/make")
+    b.add_argument("-j", "--jobs", type=int, default=8)
     t = sub.add_parser("toolchain", help="write a CMake toolchain file")
     t.add_argument("--arch", choices=sorted(qbuild.ARCH), default="x86_64")
     t.add_argument("-o", "--output", default="qnx.cmake")
@@ -55,20 +71,35 @@ def main(argv=None):
         return code
 
     if a.cmd == "rules":
-        for r in RULES:
-            print(f"{r.id}  {r.severity:7} {r.kind:7} {r.title}")
+        for r in load_rules(a.rules):
+            print(f"{r.id}  {r.severity:7} {r.kind:7} {'fix ' if r.autofix else '    '}{r.title}")
+        return 0
+    if a.cmd == "fix":
+        changes = fixes.plan(a.path, load_rules(a.rules), a.include_guarded)
+        patch = fixes.unified_diff(changes)
+        if a.output:
+            with open(a.output, "w") as fh:
+                fh.write(patch)
+        else:
+            sys.stdout.write(patch)
+        if a.apply:
+            fixes.apply(a.path, changes)
+        print(f"{len(changes)} file(s) {'patched' if a.apply else 'with proposed fixes'}", file=sys.stderr)
         return 0
     if a.cmd == "compat-header":
         print(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "qnx_compat.h"))
         return 0
     if a.cmd == "build":
-        return qbuild.build(a.path, a.arch, a.out, a.dry_run)
+        return qbuild.build(a.path, a.arch, a.out, a.dry_run, a.autotools, a.prefix,
+                            a.configure_args, a.libs, not a.no_compat, a.jobs,
+                            dict(e.split("=", 1) for e in a.env))
     if a.cmd == "toolchain":
         print(qbuild.write_toolchain(a.output, a.arch))
         return 0
     lvl = {"error": 0, "warning": 1, "info": 2}
-    fs = [f for f in scan(a.path) if lvl[f.severity] <= lvl[a.min_severity]]
-    out = RENDERERS[a.format](fs, a.path)
+    rules = load_rules(a.rules)
+    fs = [f for f in scan(a.path, rules) if lvl[f.severity] <= lvl[a.min_severity]]
+    out = RENDERERS[a.format](fs, a.path, rules) if a.format == "sarif" else RENDERERS[a.format](fs, a.path)
     if a.output:
         open(a.output, "w").write(out)
     else:

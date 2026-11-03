@@ -1,0 +1,270 @@
+# qnx-port-doctor rule database.
+# Fields: id, severity (error|warning|info), kind (include|api|path|macro|link),
+# pattern (Python regex), title, fix, guardable (default true), autofix (fixer name, optional).
+rules:
+- id: QPD001
+  severity: error
+  kind: include
+  pattern: '#\s*include\s*<sys/epoll\.h>'
+  title: epoll is Linux-only
+  fix: Use poll()/select(), ionotify(), or libevent/libuv kqueue-less backends; QNX has no epoll.
+- id: QPD002
+  severity: error
+  kind: include
+  pattern: '#\s*include\s*<sys/inotify\.h>'
+  title: inotify is Linux-only
+  fix: Use QNX inotify-like fsevmgr or poll with stat(); consider periodic polling.
+- id: QPD003
+  severity: error
+  kind: include
+  pattern: '#\s*include\s*<sys/prctl\.h>'
+  title: prctl is Linux-only
+  fix: For thread names use pthread_setname_np(); drop PR_SET_PDEATHSIG or use procmgr_event_notify().
+- id: QPD004
+  severity: error
+  kind: include
+  pattern: '#\s*include\s*<sys/eventfd\.h>'
+  title: eventfd is Linux-only
+  fix: Use a pipe() pair or QNX pulses (MsgSendPulse) for wakeups.
+- id: QPD005
+  severity: error
+  kind: include
+  pattern: '#\s*include\s*<sys/signalfd\.h>'
+  title: signalfd is Linux-only
+  fix: Use self-pipe trick with sigaction, or sigwaitinfo() in a dedicated thread.
+- id: QPD006
+  severity: error
+  kind: include
+  pattern: '#\s*include\s*<sys/timerfd\.h>'
+  title: timerfd is Linux-only
+  fix: Use timer_create() with SIGEV_PULSE/SIGEV_THREAD, or poll() timeouts.
+- id: QPD007
+  severity: error
+  kind: include
+  pattern: '#\s*include\s*<sys/sendfile\.h>'
+  title: sys/sendfile.h is Linux-only
+  fix: Fall back to read()/write() loop.
+- id: QPD008
+  severity: error
+  kind: include
+  pattern: '#\s*include\s*<(linux|asm)/[^>]+>'
+  title: Linux kernel headers
+  fix: 'Remove or guard with #ifdef __linux__; find QNX devctl()/resource-manager equivalent.'
+- id: QPD009
+  severity: warning
+  kind: include
+  pattern: '#\s*include\s*<(sys/sysinfo|sys/vfs|mntent|sys/klog|sys/personality|sys/fsuid)\.h>'
+  title: Linux-specific system header
+  fix: Use sysconf(), statvfs(), or QNX-specific /proc-less APIs.
+- id: QPD010
+  severity: warning
+  kind: include
+  pattern: '#\s*include\s*<(execinfo|malloc|features|gnu/libc-version|error)\.h>'
+  title: glibc-specific header
+  fix: Guard with __GLIBC__; QNX uses its own libc (backtrace via libbacktrace).
+- id: QPD011
+  severity: info
+  kind: include
+  pattern: '#\s*include\s*<sys/cdefs\.h>'
+  title: sys/cdefs.h is non-standard
+  fix: Usually available on QNX but verify macros used (__BEGIN_DECLS etc.).
+- id: QPD020
+  severity: error
+  kind: api
+  pattern: '\bepoll_(create1?|ctl|wait|pwait)\s*\('
+  title: epoll API call
+  fix: Replace with poll() or an abstraction (libevent select/poll backend).
+- id: QPD021
+  severity: error
+  kind: api
+  pattern: '\bclone\s*\('
+  title: clone() is Linux-only
+  fix: Use pthread_create() or posix_spawn().
+- id: QPD022
+  severity: warning
+  kind: api
+  pattern: '\b(accept4|pipe2|dup3)\s*\('
+  title: 'Linux-only *4/*2/*3 syscall variant'
+  fix: Check QNX libc version; else use accept()/pipe()/dup2() + fcntl(FD_CLOEXEC/O_NONBLOCK).
+- id: QPD023
+  severity: error
+  kind: api
+  pattern: '\b(splice|tee|vmsplice|sendfile)\s*\('
+  title: Zero-copy Linux syscall
+  fix: Use read()/write() loop.
+- id: QPD024
+  severity: warning
+  kind: api
+  pattern: '\bsched_(get|set)affinity\s*\('
+  title: Linux CPU affinity API
+  fix: Use ThreadCtl(_NTO_TCTL_RUNMASK_GET_AND_SET_INHERIT, ...).
+- id: QPD025
+  severity: warning
+  kind: api
+  pattern: '\bmallinfo2?\s*\(|\bmalloc_usable_size\s*\(|\bmalloc_trim\s*\('
+  title: glibc malloc extensions
+  fix: 'Guard with __GLIBC__; QNX offers mallinfo() in <malloc.h> with differences — verify.'
+- id: QPD026
+  severity: warning
+  kind: api
+  pattern: '\bgettid\s*\(|SYS_gettid'
+  title: gettid is Linux-specific
+  fix: 'Use gettid() from QNX <process.h> or pthread_self().'
+- id: QPD027
+  severity: warning
+  kind: api
+  pattern: '\bsyscall\s*\(\s*SYS_'
+  title: raw Linux syscall()
+  fix: QNX has no Linux syscall numbers; call the libc wrapper or kernel call (ThreadCtl, etc.).
+- id: QPD028
+  severity: warning
+  kind: api
+  pattern: '\b(backtrace|backtrace_symbols(_fd)?)\s*\('
+  title: glibc backtrace()
+  fix: Use QNX libbacktrace (bt_get_backtrace) or guard out.
+- id: QPD029
+  severity: warning
+  kind: api
+  pattern: '\b(get_nprocs(_conf)?|sysinfo)\s*\('
+  title: Linux sysinfo API
+  fix: 'Use sysconf(_SC_NPROCESSORS_ONLN) or _syspage_ptr->num_cpu.'
+- id: QPD030
+  severity: info
+  kind: api
+  pattern: '\bmemrchr\s*\(|\bstrchrnul\s*\(|\bmempcpy\s*\(|\bcanonicalize_file_name\s*\('
+  title: GNU string extension
+  fix: Provide a fallback implementation or use realpath().
+- id: QPD031
+  severity: warning
+  kind: api
+  pattern: '\bprctl\s*\('
+  title: prctl() call
+  fix: See QPD003.
+- id: QPD032
+  severity: warning
+  kind: api
+  pattern: '\bMAP_(POPULATE|HUGETLB|LOCKED|NORESERVE)\b'
+  title: Linux-only mmap flag
+  fix: Drop flag or use QNX MAP_LAZY / shm_ctl().
+- id: QPD033
+  severity: warning
+  kind: api
+  pattern: '\bSO_REUSEPORT_LB\b|\bTCP_(CORK|QUICKACK|USER_TIMEOUT|DEFER_ACCEPT)\b|\bSOCK_(NONBLOCK|CLOEXEC)\b'
+  title: Linux-specific socket option/flag
+  fix: 'Guard with #ifdef; use fcntl() for NONBLOCK/CLOEXEC.'
+- id: QPD034
+  severity: info
+  kind: api
+  pattern: '\bO_(DIRECT|NOATIME|TMPFILE|PATH)\b'
+  title: Linux-specific open flag
+  fix: 'Guard with #ifdef; not supported on QNX.'
+- id: QPD035
+  severity: error
+  kind: macro
+  pattern: '^\s*#\s*define\s+_XOPEN_SOURCE\s*(//.*|/\*.*)?$'
+  title: _XOPEN_SOURCE defined without a value
+  fix: 'QNX <sys/platform.h> rejects it (#error ... XOPEN_SOURCE is not supported); use `#define _XOPEN_SOURCE 700`.'
+  guardable: false
+  autofix: xopen_value
+- id: QPD036
+  severity: warning
+  kind: macro
+  pattern: '^\s*#\s*define\s+_XOPEN_SOURCE\s+([1-4]\d\d|[1-9]\d?)\b'
+  title: old _XOPEN_SOURCE level
+  fix: 'QNX supports 500/600/700; older values may #error. Use 700.'
+  guardable: false
+  autofix: xopen_value
+- id: QPD037
+  severity: warning
+  kind: api
+  pattern: '\bstrptime\s*\(.*%[FTDRe]'
+  title: 'GNU strptime shorthand (%F/%T/%D/%R)'
+  fix: 'QNX strptime() returns NULL for %F/%T; spell out %Y-%m-%d and %H:%M:%S.'
+  guardable: false
+  autofix: strptime_expand
+- id: QPD038
+  severity: info
+  kind: api
+  pattern: '\bstrptime\s*\('
+  title: strptime() with runtime format
+  fix: 'If formats come from users/scripts, expand %F/%T/%D/%R before calling (QNX lacks them).'
+  guardable: false
+- id: QPD039
+  severity: warning
+  kind: api
+  pattern: '\bSA_RESTART\b'
+  title: SA_RESTART not supported on QNX 8
+  fix: 'QNX <signal.h> does not define SA_RESTART: wrap in #ifdef SA_RESTART and handle EINTR, or force-include qnx_compat.h
+    (defines it as 0).'
+  guardable: false
+  autofix: guard_sa_restart
+- id: QPD044
+  severity: warning
+  kind: api
+  pattern: '\bIOV_MAX\b'
+  title: IOV_MAX is not a compile-time constant on QNX
+  fix: 'QNX <limits.h> #undefs IOV_MAX: use sysconf(_SC_IOV_MAX), UIO_MAXIOV from <sys/uio.h>, or force-include qnx_compat.h.'
+  guardable: false
+  autofix: iov_max_fallback
+- id: QPD045
+  severity: info
+  kind: api
+  pattern: '\b(regcomp|regexec)\s*\('
+  title: POSIX regex lives in libregex on QNX
+  fix: Link with -lregex.
+  guardable: false
+- id: QPD046
+  severity: info
+  kind: api
+  pattern: '\b(getaddrinfo|gethostbyname|socket|inet_ntop)\s*\('
+  title: BSD sockets live in libsocket on QNX
+  fix: 'Link with -lsocket (autoconf: LIBS=-lsocket).'
+  guardable: false
+- id: QPD040
+  severity: warning
+  kind: path
+  pattern: '\"/proc/(self|\d+|%d)/(maps|status|stat|cmdline|exe|fd|task)'
+  title: Linux procfs layout
+  fix: 'QNX /proc/<pid>/as uses devctl(DCMD_PROC_*); /proc/self/exe -> _cmdname() / getexecname().'
+- id: QPD041
+  severity: warning
+  kind: path
+  pattern: '\"/proc/(cpuinfo|meminfo|loadavg|mounts|net/)'
+  title: Linux /proc system file
+  fix: Use sysconf(), _syspage_ptr, or pidin-style devctl queries.
+- id: QPD042
+  severity: info
+  kind: path
+  pattern: '\"/sys/(class|devices|fs|kernel)/'
+  title: Linux sysfs path
+  fix: No sysfs on QNX; query the resource manager via devctl().
+- id: QPD043
+  severity: info
+  kind: path
+  pattern: '\"/dev/shm/'
+  title: /dev/shm path
+  fix: Use shm_open(); QNX places it under /dev/shmem.
+- id: QPD050
+  severity: info
+  kind: macro
+  pattern: '#\s*if(def)?\s*.*__linux__'
+  title: __linux__ conditional
+  fix: 'Check that the #else branch compiles on QNX; add `|| defined(__QNX__)` where POSIX code fits.'
+- id: QPD060
+  severity: warning
+  kind: link
+  pattern: '(?<![\w-])-l(rt|dl|pthread|anl|crypt)\b'
+  title: glibc split library
+  fix: 'On QNX these live in libc: drop -lrt/-ldl/-lpthread; use -lsocket for sockets.'
+- id: QPD061
+  severity: info
+  kind: link
+  pattern: '\b(socket|connect|bind|getaddrinfo)\b'
+  title: socket usage in build file
+  fix: QNX needs -lsocket for BSD socket APIs.
+- id: QPD062
+  severity: warning
+  kind: link
+  pattern: '-Wl,--as-needed|-static-libgcc|-rdynamic'
+  title: GNU ld-specific flag
+  fix: Usually fine with qcc (GNU ld), but verify -rdynamic/--as-needed behaviour.

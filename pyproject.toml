@@ -8,9 +8,10 @@ version = "0.1.0"
 description = "Scan C/C++ projects for QNX portability blockers and cross-build with QNX SDP 8.0"
 license = {text = "MIT"}
 requires-python = ">=3.8"
+dependencies = ["PyYAML>=5.1"]
 
 [project.scripts]
 qnx-port-doctor = "qnx_port_doctor.cli:main"
 
 [tool.setuptools.package-data]
-qnx_port_doctor = ["data/*.h"]
+qnx_port_doctor = ["data/*.h", "data/*.yaml"]

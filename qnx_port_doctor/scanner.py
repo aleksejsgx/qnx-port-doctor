@@ -19,19 +19,24 @@ class Finding:
     title: str
     fix: str
     note: str = ""
+    autofix: str = ""
 
     def to_dict(self):
         return asdict(self)
 
 
-_compiled = [(r, re.compile(r.pattern)) for r in RULES]
+def compile_rules(rules):
+    return [(r, re.compile(r.pattern)) for r in rules]
+
+
+_compiled = compile_rules(RULES)
 
 
 def _is_build_file(name):
     return name in BUILD_FILES or name.endswith((".mk", ".cmake"))
 
 
-def scan_file(path, rel, conditionals=None):
+def scan_file(path, rel, conditionals=None, compiled=None):
     name = os.path.basename(path)
     ext = os.path.splitext(name)[1]
     if ext in SOURCE_EXT:
@@ -47,6 +52,7 @@ def scan_file(path, rel, conditionals=None):
         return []
     out = []
     guarded = guards(lines) if ext in SOURCE_EXT else {}
+    defined = set(re.findall(r"^\s*#\s*define\s+([A-Za-z_]\w*)", "".join(lines), re.M)) if ext in SOURCE_EXT else set()
     comments = comment_lines(lines) if ext in SOURCE_EXT else set()
     freason = file_reason(rel, conditionals or {}) if ext in SOURCE_EXT else None
     for no, line in enumerate(lines, 1):
@@ -54,14 +60,16 @@ def scan_file(path, rel, conditionals=None):
         if no in comments:
             continue
         is_directive = bool(re.match(r"\s*#\s*(if|ifdef|ifndef|elif)\b", line))
-        for rule, rx in _compiled:
+        for rule, rx in compiled or _compiled:
             if rule.kind not in kinds:
                 continue
             # socket hint only meaningful when linking is configured: skip noisy rule in source
             if rx.search(line):
                 sev, note = rule.severity, ""
                 m = rx.search(line)
-                if not rule.guardable and rule.kind != "macro" and (
+                if not rule.guardable and rule.kind != "macro" and m.group(0) in defined:
+                    sev, note = "info", f"fallback definition of {m.group(0)} in this file"
+                elif not rule.guardable and rule.kind != "macro" and (
                         (is_directive and "defined" in line or re.match(r"\s*#\s*ifn?def", line))
                         or guarded.get(no) == m.group(0)):
                     sev, note = "info", f"already guarded by {m.group(0)}"
@@ -72,20 +80,21 @@ def scan_file(path, rel, conditionals=None):
                         sev, note = "info", f"guarded by {guarded[no]}; verify the QNX build leaves it undefined"
                     elif freason:
                         sev, note = "info", f"conditionally compiled ({freason})"
-                out.append(Finding(rule.id, sev, rel, no, s[:160], rule.title, rule.fix, note))
+                out.append(Finding(rule.id, sev, rel, no, s[:160], rule.title, rule.fix, note, rule.autofix))
     return out
 
 
-def scan(root):
+def scan(root, rules=None):
+    compiled = compile_rules(rules) if rules is not None else None
     findings = []
     if os.path.isfile(root):
-        return scan_file(root, os.path.basename(root))
+        return scan_file(root, os.path.basename(root), None, compiled)
     conditionals = build_conditionals(root)
     for dp, dns, fns in os.walk(root):
         dns[:] = sorted(d for d in dns if d not in SKIP_DIRS)
         for fn in sorted(fns):
             p = os.path.join(dp, fn)
-            findings.extend(scan_file(p, os.path.relpath(p, root), conditionals))
+            findings.extend(scan_file(p, os.path.relpath(p, root), conditionals, compiled))
     return findings
 
 
