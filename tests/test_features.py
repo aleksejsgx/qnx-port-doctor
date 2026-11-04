@@ -112,3 +112,11 @@ def test_run_arch_detection_and_qemu_cmd(tmp_path):
     cmd = qrun.qemu_cmd("/img", 2223, arch="aarch64le")
     assert cmd[0] == "qemu-system-aarch64" and "virtio-blk-device,drive=drv0" in cmd
     assert "hostfwd=tcp:127.0.0.1:2223-:22" in " ".join(cmd)
+
+
+def test_socket_probe_rule_not_noisy(tmp_path):
+    from qnx_port_doctor.scanner import scan
+    (tmp_path / "Makefile.am").write_text("SRCS = cmd-bind-key.c socket.c\n")
+    (tmp_path / "configure.ac").write_text("AC_SEARCH_LIBS([socket], [socket])\n")
+    hits = [(f.file, f.rule) for f in scan(str(tmp_path)) if f.rule == "QPD061"]
+    assert hits == [("configure.ac", "QPD061")]

@@ -49,7 +49,7 @@ qnx-port-doctor run --file libuv-qnx/uv_run_tests_a examples/libuv-tests.sh
 |---|---|---|
 | jq 1.8.1 | `fix --apply`, `build --autotools --arch aarch64le` | runs; `--run-tests` 509/522 (same as x86_64) |
 | cJSON 1.7.18 | `build --arch aarch64le`, static | 18/18 test suites pass |
-| libuv 1.49.2 | `build --arch aarch64le` | builds (tests not run on Arm yet) |
+| libuv 1.49.2 | `build --arch aarch64le` + QNX 8 patch | 22/26 selected tests. Same 2 failures as x86_64 (fs_event_watch_file, process_title), plus `platform_output` (`uv_resident_set_memory`: `devctl(DCMD_PROC_ASINFO)` on `/proc/self/ctl` fails on aarch64) and `tcp_ping_pong` (still exchanging PING/PONG at 800+ round trips, likely the test timeout under full emulation) |
 
 Image notes:
 

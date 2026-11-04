@@ -259,8 +259,8 @@ rules:
 - id: QPD061
   severity: info
   kind: link
-  pattern: '\b(socket|connect|bind|getaddrinfo)\b'
-  title: socket usage in build file
+  pattern: '(AC_SEARCH_LIBS|AC_CHECK_LIB|AC_CHECK_FUNCS?|check_function_exists|check_symbol_exists|check_library_exists)\s*\(\s*\[?\s*(socket|connect|getaddrinfo|gethostbyname|inet_ntop)\b'
+  title: socket function probe in build file
   fix: QNX needs -lsocket for BSD socket APIs.
 - id: QPD062
   severity: warning
