@@ -43,13 +43,19 @@ qnx-port-doctor build libuv-v1.49.2 --out libuv-qnx --configure-arg=-DLIBUV_BUIL
 qnx-port-doctor run --file libuv-qnx/uv_run_tests_a examples/libuv-tests.sh
 ```
 
-## aarch64le
+## aarch64le (QEMU virt, Cortex-A57, emulated)
 
-* Cross-builds verified (ELF machine 183): jq 1.8.1 (autotools, after `fix`), cJSON 1.7.18 and libuv 1.49.2 (CMake).
-* Running them in QEMU is pending: the image built by `mkqnximage --arch=aarch64le` needs `sbin/devb-virtio`
-  from package `com.qnx.qnx800.target.driver.virtio.devb`, which isn't installed yet. Without it the
-  disk never appears (`Unable to access /dev/hd0`).
-* Workarounds tried, kept here for reference:
-  * Embedding the disk image in the IFS and serving it through `devb-loopback` or `devb-ram`:
-    the partitions are detected and read-only mounts work, but read-write qnx6 mounts fail with
-    "Read-only file system".
+| Project | Build | Result on QNX 8 aarch64le |
+|---|---|---|
+| jq 1.8.1 | `fix --apply`, `build --autotools --arch aarch64le` | runs; `--run-tests` 509/522 (same as x86_64) |
+| cJSON 1.7.18 | `build --arch aarch64le`, static | 18/18 test suites pass |
+| libuv 1.49.2 | `build --arch aarch64le` | builds (tests not run on Arm yet) |
+
+Image notes:
+
+* Needs packages `com.qnx.qnx800.target.qemuvirt` and `com.qnx.qnx800.target.driver.virtio.devb`.
+  Without `devb-virtio` the disk never appears (`Unable to access /dev/hd0`).
+* The SDP 8.0 OpenSSH needs `/usr/libexec/sshd-auth`, but the mkqnximage template
+  doesn't install it, so sshd never accepts connections. Fix it with the two local snippets
+  shown in the README.
+* Networking needed no extra package: io-sock uses `devs-vtnet_mmio.so`, which ships with the SDP.

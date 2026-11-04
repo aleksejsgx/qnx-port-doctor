@@ -61,11 +61,16 @@ Defaults: x86_64 image `~/qnx800/images/qemu/qemu` on ssh port 2222, aarch64le i
 `--file` copies extra files; `--stdin` feeds a local file to the program.
 
 Build the aarch64le image once (needs the `com.qnx.qnx800.target.qemuvirt` BSP and the
-`com.qnx.qnx800.target.driver.virtio.devb` block driver package, plus `qemu-system-aarch64`):
+`com.qnx.qnx800.target.driver.virtio.devb` block driver package, plus `qemu-system-aarch64`).
+The SDP's OpenSSH needs its `sshd-auth` helper, which the mkqnximage template doesn't
+install yet, so add it through mkqnximage's local snippets:
 
 ```sh
 mkdir -p ~/qnx800/images/qemu-aarch64 && cd ~/qnx800/images/qemu-aarch64
 mkqnximage --type=qemu --arch=aarch64le --ssh-ident=none --data-size=200 --build
+echo 'bin/sshd-auth=usr/libexec/sshd-auth' >> local/snippets/system_files.custom
+echo '[type=link] /usr/libexec/sshd-auth=/system/bin/sshd-auth' >> local/snippets/ifs_files.custom
+mkqnximage --build
 ```
 
 License: MIT

@@ -294,7 +294,8 @@ mkdir a64 && tar -C a64 -xzf jq-1.8.1.tar.gz
 qnx-port-doctor fix a64/jq-1.8.1 --apply
 qnx-port-doctor build a64/jq-1.8.1 --autotools --arch aarch64le \
   --configure-arg=--without-oniguruma --configure-arg=--disable-docs --configure-arg=--disable-shared
-qnx-port-doctor build cJSON-1.7.18 --arch aarch64le --out cjson-a64   # CMake toolchain for aarch64
+qnx-port-doctor build cJSON-1.7.18 --arch aarch64le --out cjson-a64 \
+  --configure-arg=-DBUILD_SHARED_LIBS=OFF --configure-arg=-DENABLE_CJSON_TEST=ON
 ```
 
 The host triple becomes `aarch64-unknown-nto-qnx8.0.0` and the CMake toolchain uses
@@ -306,6 +307,10 @@ the virtio block driver (`com.qnx.qnx800.target.driver.virtio.devb`) and
 ```sh
 mkdir -p ~/qnx800/images/qemu-aarch64 && cd ~/qnx800/images/qemu-aarch64
 mkqnximage --type=qemu --arch=aarch64le --ssh-ident=none --data-size=200 --build
+# OpenSSH in SDP 8.0 needs its sshd-auth helper, which the image template doesn't install yet:
+echo 'bin/sshd-auth=usr/libexec/sshd-auth' >> local/snippets/system_files.custom
+echo '[type=link] /usr/libexec/sshd-auth=/system/bin/sshd-auth' >> local/snippets/ifs_files.custom
+mkqnximage --build
 ```
 
 `run` reads the architecture from the ELF header, so the command doesn't change:
@@ -314,9 +319,22 @@ mkqnximage --type=qemu --arch=aarch64le --ssh-ident=none --data-size=200 --build
 qnx-port-doctor run --stdin in.json a64/jq-1.8.1/jq -- -c '.os'
 ```
 
-The Arm VM is fully emulated (no KVM on an x86 host), so expect a slower boot than x86_64.
+On our machine jq's test suite gives the same 509/522 on Arm as on x86_64, and all 18 cJSON
+test suites pass:
 
-> **Troubleshooting:** if the boot log shows `devb-virtio: cannot execute` followed by
+```sh
+(cd cjson-a64/tests && tar czf ../../cjson-tests-a64.tgz cjson_add compare_tests minify_tests \
+   misc_tests parse_* print_* readme_examples inputs)
+qnx-port-doctor run --file cjson-tests-a64.tgz examples/cjson-tests.sh   # suites passed: 18 failed: 0
+```
+
+Build the tests statically (`BUILD_SHARED_LIBS=OFF`), because `run` copies single files. A shared build
+fails on the target with `Could not load library libcjson.so.1`. The Arm VM is fully
+emulated (no KVM on an x86 host), so the first boot is slower than on x86_64.
+
+> **Troubleshooting:** if the VM boots (`Startup complete`) but ssh never answers and the log says
+> `/usr/libexec/sshd-auth does not exist`, add the two snippet lines above and run `mkqnximage --build` again.
+> If the boot log shows `devb-virtio: cannot execute` followed by
 > `Unable to access /dev/hd0`, the virtio block driver package is missing. mkqnximage
 > only warns about it (`Host file 'sbin/devb-virtio' missing`).
 
